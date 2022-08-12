@@ -1,47 +1,26 @@
-import {Client, auth} from 'twitter-api-sdk'
 import { TwitterClient } from 'twitter-api-client'
 import dotenv from "dotenv"
-import fetch from "node-fetch";
 import {writeFile, readFile} from 'fs'
 import * as fs from "fs";
-import cron from 'node-cron'
+import {canDM, runBot, sleep} from "./functions.js";
 dotenv.config()
 
-// const client = new Client(BEARER)
-// const authClient = new auth.OAuth2User({
-//   client_id: process.env.API_KEY,
-//   client_secret: process.env.API_KEY_SECRET,
-//   callback: "http://127.0.0.1:3000/callback",
-//   scopes: [""]
-// })
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-const twitterClient = new TwitterClient({
+const paulClient = new TwitterClient({
   apiKey: process.env.API_KEY,
   apiSecret: process.env.API_KEY_SECRET,
   accessToken: process.env.OAUTH_TOKEN_GRAHAM,
   accessTokenSecret: process.env.OAUTH_TOKEN_GRAHAM_SECRET,
 })
 
-// Checks if you can DM this person
-const canDM = async (id) => {
-  return new Promise((resolve, reject) => {
-    twitterClient.accountsAndUsers.friendshipsShow({
-      source_screen_name: 'dj_paulie_p',
-      target_id: id
-    })
-      .then((res) => {
-        resolve(res.relationship.source.can_dm)
-      })
-      .catch(err => reject(err))
-  })
-}
+const paulScreenName = 'dj_paulie_p';
+
+await runBot(paulClient, 'paul', paulScreenName, false, 'Stanford_JBLP')
+
 
 const getChrisFollowers = async (cursor) => {
   return new Promise((resolve, reject) => {
     twitterClient.accountsAndUsers.followersList({
-      screen_name: 'crossriverbank',
+      screen_name: 'Stanford_JBLP',
       ...(cursor !== 0 ? {cursor} : {})
     })
       .then(res => {
@@ -53,26 +32,26 @@ const getChrisFollowers = async (cursor) => {
 
 
 // Creates stats and writes to file. outdated
-const createStats = () => {
-  readFile('./out.txt', 'utf8', (err, data) => {
-    if (err) {
-      console.log("[ERROR]: " + JSON.stringify(err, null, 2))
-    } else {
-      const events = JSON.parse(data)
-      const range = getDateRange(events)
-      let earliest = new Date(range[0])
-      let latest = new Date(range[1])
-      let contents = `NUM_OF_EVENTS: ${events.length}, EARLIEST DATE: ${earliest.toDateString()}, LATEST DATE: ${latest.toDateString()} \n EVENTS: \n ${JSON.stringify(events, null, 2)}`
-      writeFile('./out.txt', contents, err => {
-        if (err) {
-          console.log("[ERROR] Writing to file:", JSON.stringify(err, null, 2))
-        } else {
-          console.log("[INFO] Successfully written results to file. out.txt")
-        }
-      })
-    }
-  })
-}
+// const createStats = () => {
+//   readFile('./out.txt', 'utf8', (err, data) => {
+//     if (err) {
+//       console.log("[ERROR]: " + JSON.stringify(err, null, 2))
+//     } else {
+//       const events = JSON.parse(data)
+//       const range = getDateRange(events)
+//       let earliest = new Date(range[0])
+//       let latest = new Date(range[1])
+//       let contents = `NUM_OF_EVENTS: ${events.length}, EARLIEST DATE: ${earliest.toDateString()}, LATEST DATE: ${latest.toDateString()} \n EVENTS: \n ${JSON.stringify(events, null, 2)}`
+//       writeFile('./out.txt', contents, err => {
+//         if (err) {
+//           console.log("[ERROR] Writing to file:", JSON.stringify(err, null, 2))
+//         } else {
+//           console.log("[INFO] Successfully written results to file. out.txt")
+//         }
+//       })
+//     }
+//   })
+// }
 
 // Gets DMs from twitter starting from given cursor
 const getDMs = async (cursor) => {
@@ -284,7 +263,7 @@ const randomMessage = (name) => {
 }
 
 const randomTime = () => {
-  return (Math.random() + 0.5).toFixed(2)
+  return (Math.random() + 1).toFixed(2)
 }
 
 const updateDMsAndIDs = async () => {
@@ -320,7 +299,7 @@ const firstBatch = async () => {
     for (const follower of users) {
       let can_dm, already_messaged, already_automessaged
       try {
-        can_dm = await canDM(follower.id_str)
+        can_dm = await canDM(twitterClient, paulScreenName, follower.id_str)
         already_messaged = await alreadyMessaged(follower.id_str)
         let automessaged = await getSentFromDMS()
         already_automessaged = automessaged.map(user => user.id_str).includes(follower.id_str)
@@ -365,6 +344,11 @@ const firstBatch = async () => {
       }
     }
 
+    if (next_cursor === '0' || next_cursor === 0) {
+      console.log(`[FIN] Next cursor was registered as ${next_cursor}. Program completed.`)
+      process.exit(1)
+    }
+
     try {
       await fs.promises.writeFile('chrisFollowers.txt', `${JSON.stringify({next_cursor}, null, 1)}`)
     } catch (err) {
@@ -374,6 +358,3 @@ const firstBatch = async () => {
   }
 }
 
-firstBatch()
-
-// updateDMsAndIDs()
